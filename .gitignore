@@ -1,0 +1,11 @@
+# Virtual environment
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.env
+
+# Docker
+*.log
+docker-compose.yml
