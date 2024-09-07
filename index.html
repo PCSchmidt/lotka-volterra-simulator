@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lotka-Volterra Simulator</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-image: url('/static/images/predator-prey.jpg');
+            background-size: cover;
+            background-attachment: fixed;
+            background-position: center;
+            position: relative;
+        }
+        body::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255, 255, 255, 0.8);
+            z-index: -1;
+        }
+        .content {
+            position: relative;
+            z-index: 1;
+        }
+        input {
+            margin-bottom: 10px;
+            padding: 5px;
+            width: 100%;
+        }
+        canvas {
+            max-width: 100%;
+        }
+        .explanation {
+            background-color: #f0f0f0;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        #phase-plot {
+            margin-top: 20px;
+        }
+        .error {
+            color: red;
+            margin-top: 10px;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin-top: 20px;
+        }
+        button {
+            padding: 10px;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="content">
+        <h1>Lotka-Volterra Predator-Prey Model</h1>
+        
+        <div class="explanation">
+            <h2>What is the Lotka-Volterra Predator-Prey Model?</h2>
+            <p>The Lotka-Volterra model, also known as the predator-prey equations, describes the dynamics of biological systems in which two species interact, one as a predator and the other as prey. The model is characterized by oscillations in the population numbers of both species.</p>
+            <p>Key components of the model:</p>
+            <ul>
+                <li><strong>x</strong>: Prey population</li>
+                <li><strong>y</strong>: Predator population</li>
+                <li><strong>α (alpha)</strong>: Prey birth rate</li>
+                <li><strong>β (beta)</strong>: Predation rate</li>
+                <li><strong>γ (gamma)</strong>: Predator death rate</li>
+                <li><strong>δ (delta)</strong>: Predator growth rate</li>
+            </ul>
+            <p>The model demonstrates how predator and prey populations affect each other and oscillate over time.</p>
+        </div>
+
+        <p>Adjust the parameters below to simulate population dynamics:</p>
+
+        <form id="simulation-form">
+            <label for="x0">Initial Prey Population (x0):</label>
+            <input type="number" id="x0" name="x0" step="0.1" value="10"><br>
+
+            <label for="y0">Initial Predator Population (y0):</label>
+            <input type="number" id="y0" name="y0" step="0.1" value="5"><br>
+
+            <label for="alpha">Prey Birth Rate (α):</label>
+            <input type="number" id="alpha" name="alpha" step="0.1" value="1.1"><br>
+
+            <label for="beta">Predation Rate (β):</label>
+            <input type="number" id="beta" name="beta" step="0.01" value="0.02"><br>
+
+            <label for="gamma">Predator Death Rate (γ):</label>
+            <input type="number" id="gamma" name="gamma" step="0.1" value="1.5"><br>
+
+            <label for="delta">Predator Growth Rate (δ):</label>
+            <input type="number" id="delta" name="delta" step="0.01" value="0.01"><br>
+
+            <label for="T">Time Period (T):</label>
+            <input type="number" id="T" name="T" step="1" value="50"><br>
+
+            <button type="submit">Simulate</button>
+            <button type="button" id="reset-btn">Reset</button>
+        </form>
+
+        <div id="error-message" class="error"></div>
+        <div id="loading" class="loading">Simulating... Please wait.</div>
+
+        <h2>Simulation Results</h2>
+        <canvas id="resultsChart"></canvas>
+
+        <h2>Phase Plot</h2>
+        <canvas id="phasePlot"></canvas>
+
+        <script>
+            const form = document.getElementById('simulation-form');
+            const errorMessage = document.getElementById('error-message');
+            const loading = document.getElementById('loading');
+            const resetBtn = document.getElementById('reset-btn');
+
+            form.addEventListener('submit', async function(event) {
+                event.preventDefault();
+                errorMessage.textContent = '';
+                loading.style.display = 'block';
+
+                const formData = new FormData(event.target);
+                const data = Object.fromEntries(formData.entries());
+
+                // Input validation
+                for (const [key, value] of Object.entries(data)) {
+                    if (value === '' || isNaN(value) || Number(value) <= 0) {
+                        errorMessage.textContent = `Invalid input for ${key}. Please enter a positive number.`;
+                        loading.style.display = 'none';
+                        return;
+                    }
+                    data[key] = Number(value);
+                }
+
+                try {
+                    const response = await fetch("https://lotka-volterra-simulator-40384bb18130.herokuapp.com//simulate/", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify(data),
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    plotResults(result.time, result.prey, result.predator);
+                } catch (error) {
+                    errorMessage.textContent = `An error occurred: ${error.message}`;
+                } finally {
+                    loading.style.display = 'none';
+                }
+            });
+
+            resetBtn.addEventListener('click', function() {
+                form.reset();
+                errorMessage.textContent = '';
+                // Clear charts
+                const charts = Chart.getChart("resultsChart");
+                if (charts) charts.destroy();
+                const phaseChart = Chart.getChart("phasePlot");
+                if (phaseChart) phaseChart.destroy();
+            });
+
+            function plotResults(time, prey, predator) {
+                const ctx = document.getElementById('resultsChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: time,
+                        datasets: [{
+                            label: 'Prey Population',
+                            data: prey,
+                            borderColor: 'blue',
+                            fill: false,
+                        },
+                        {
+                            label: 'Predator Population',
+                            data: predator,
+                            borderColor: 'red',
+                            fill: false,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            x: { title: { display: true, text: 'Time' } },
+                            y: { title: { display: true, text: 'Population' } }
+                        }
+                    }
+                });
+
+                // Add phase plot
+                const phaseCtx = document.getElementById('phasePlot').getContext('2d');
+                new Chart(phaseCtx, {
+                    type: 'scatter',
+                    data: {
+                        datasets: [{
+                            label: 'Predator vs Prey',
+                            data: prey.map((x, i) => ({x: x, y: predator[i]})),
+                            borderColor: 'purple',
+                            backgroundColor: 'rgba(128, 0, 128, 0.5)',
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            x: { 
+                                title: { display: true, text: 'Prey Population' },
+                                type: 'linear',
+                                position: 'bottom'
+                            },
+                            y: { 
+                                title: { display: true, text: 'Predator Population' },
+                                type: 'linear',
+                                position: 'left'
+                            }
+                        }
+                    }
+                });
+            }
+        </script>
+
+    </div>
+
+</body>
+</html>
+
